@@ -5,12 +5,16 @@
 //rankingDisplay
 const int cRankingEachPageNum = 8;
 const int cChangePageTime = 10; //s
-const string cFontPath = "font/NotoSansCJKtc-Black.otf";
+const float cTextAnimTime = 4.0f;
+const float cTextAnimWaitTime = 1.0f;
+const string cFontPath = "font/";
 const int cFontSize = 68;
 const int cFontLSize = 90;
 
-const int cRankCanvasWidth = 800;
-const int cRankCanvasHeight = 120;
+const int cRankNameCanvasWidth = 270;
+const int cRankNameCanvasHeight = 120;
+const int cRankNameLargeCanvasWidth = 400;
+const int cRankNameLargeCanvasHeight = 120;
 const ofColor cRankColor(100, 183, 185);
 
 const ofVec2f cRankStartPosLeft(147, 430);

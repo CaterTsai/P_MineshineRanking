@@ -2,7 +2,7 @@
 
 #include "constParameter.h"
 #include "ofxHttpUtils.h"
-#include "ofxTrueTypeFontUC.h"
+#include "fontMgr.h"
 #include "ofxAnimatableFloat.h"
 #include "json.h"
 
@@ -22,17 +22,35 @@ private:
 	{
 	public:
 		rankData();
-		rankData(int id, string teamName, int score);
-		void update(float);
-		void draw(int x, int y);
-		void setDisplay(ofImage& img);
+		rankData(int id, string teamName, int score, eFontType type = eFontNormal);
+		~rankData();
+		void update(float delta);
+		void draw(int x, int y, float alpha);
 		void setData(int id, string teamName, int score);
 		int getID();
+
+		void setFontType(eFontType type);
+
+		void resetMove();
+
+	private:
+		void setScore();
+		void updateAnim(float delta);
+
 	public:
+		eFontType _fontType;
 		int _id;
-		ofImage _display;
+		int _canvasWidth, _canvasHeight;
+		ofFbo _teamNameCanvas;
 		string _teamName;
+		
+		string _scoreStr;
 		int _score;
+
+		bool _isWait;
+		float _waitTime;
+		float _moveLength;
+		ofxAnimatableFloat	_animTextMove;
 	};
 #pragma endregion
 
@@ -50,7 +68,6 @@ public:
 private:
 	void drawNew();
 	void drawRanking();
-	void updateDisplay();
 	void addNewRankData(int id, string team, int score);
 	void updateRankData(int id, string team, int score);
 	void sortRankData();
@@ -84,17 +101,6 @@ private:
 	array<ofxAnimatableFloat, cRankingEachPageNum> _animDisplay;
 #pragma endregion
 
-#pragma region font
-private:
-	void setupFont();
-	void drawText(string& text, int x, int y);
-	ofRectangle getTextRect(string& text);
-	void drawTextL(string& text, int x, int y);
-	ofRectangle getTextRectL(string& text);
-private:
-	ofxTrueTypeFontUC _font;
-	ofxTrueTypeFontUC _fontL;
-#pragma endregion
 
 #pragma region rank number
 private:
@@ -116,7 +122,6 @@ private:
 	string _url;
 	ofxHttpUtils _conn;
 #pragma endregion
-
 
 
 };

@@ -5,41 +5,81 @@
 rankingDisplay::rankData::rankData()
 	:_id(-1)
 	, _teamName("")
+	, _scoreStr("")
 	, _score(0)
+	, _fontType(eFontNormal)
 {
+	setFontType(eFontNormal);
 }
 //-----------------------------
-rankingDisplay::rankData::rankData(int id, string teamName, int score)
+rankingDisplay::rankData::rankData(int id, string teamName, int score, eFontType type)
 	:_id(id)
 	,_teamName(teamName)
 	,_score(score)
 {
+	setScore();
+	setFontType(type);
 }
 
 //-----------------------------
-void rankingDisplay::rankData::update(float)
+rankingDisplay::rankData::~rankData()
 {
+	_teamNameCanvas.clear();
 }
 
 //-----------------------------
-void rankingDisplay::rankData::draw(int x, int y)
+void rankingDisplay::rankData::update(float delta)
 {
-	if (!_display.isAllocated())
+	if (!_teamNameCanvas.isAllocated())
 	{
-		return;
+		_teamNameCanvas.allocate(_canvasWidth, _canvasHeight, GL_RGBA);
 	}
+
+	updateAnim(delta);
+	if (_isWait)
+	{
+		_waitTime -= delta;
+		if (_waitTime <= 0)
+		{
+			_isWait = false;
+			resetMove();
+		}
+	}
+
+
+	auto rectTeam = fontMgr::GetInstance()->getStringBoundingBox(_fontType, _teamName);
+	_teamNameCanvas.begin();
+	{
+		ofClear(255);
+		ofSetColor(cRankColor);
+		fontMgr::GetInstance()->drawString(
+			_fontType,
+			_teamName,
+			ofVec2f(_canvasWidth + -rectTeam.x - _moveLength * _animTextMove.getCurrentValue(), (_canvasHeight * 0.5) - (rectTeam.y * 0.5))
+		);
+	}
+	_teamNameCanvas.end();
+}
+
+//-----------------------------
+void rankingDisplay::rankData::draw(int x, int y, float alpha)
+{
 	ofPushStyle();
 	{
-		_display.draw(x, y + _display.getHeight() * -0.5);
+		ofSetColor(255, alpha);
+		_teamNameCanvas.draw(x, y + _teamNameCanvas.getHeight() * -0.5);
+
+		auto width = _teamNameCanvas.getWidth();
+		auto scoreRect = fontMgr::GetInstance()->getStringBoundingBox(_fontType, _scoreStr);
+		ofVec2f scorePos(
+			x + (width * 1.1),
+			y + scoreRect.y * -0.5
+		);
+
+		ofSetColor(cRankColor, alpha);
+		fontMgr::GetInstance()->drawString(_fontType, _scoreStr, scorePos);
 	}
 	ofPopStyle();
-}
-
-//-----------------------------
-void rankingDisplay::rankData::setDisplay(ofImage & img)
-{
-	_display.clone(img);
-	_display.update();
 }
 
 //-----------------------------
@@ -48,12 +88,77 @@ void rankingDisplay::rankData::setData(int id, string teamName, int score)
 	_id = id;
 	_teamName = teamName;
 	_score = score;
+
+
+	setScore();
 }
 
 //-----------------------------
 int rankingDisplay::rankData::getID()
 {
 	return _id;
+}
+
+//-----------------------------
+void rankingDisplay::rankData::setFontType(eFontType type)
+{
+	_fontType = type;
+	if (type == eFontNormal)
+	{
+		_canvasWidth = cRankNameCanvasWidth;
+		_canvasHeight = cRankNameCanvasHeight;
+	}
+	else
+	{
+		_canvasWidth = cRankNameLargeCanvasWidth;
+		_canvasHeight = cRankNameLargeCanvasHeight;
+	}
+}
+
+
+//-----------------------------
+void rankingDisplay::rankData::resetMove()
+{
+	auto rectTeam = fontMgr::GetInstance()->getStringBoundingBox(_fontType, _teamName);
+
+	if (rectTeam.getWidth() - rectTeam.x > _canvasWidth)
+	{
+		_animTextMove.setRepeatType(AnimRepeat::PLAY_ONCE);
+		_animTextMove.setCurve(AnimCurve::LINEAR);
+		_animTextMove.setDuration(cTextAnimTime);
+
+		_animTextMove.animateFromTo(0.0, 1.0);
+
+		_moveLength = rectTeam.getWidth();
+
+		_isWait = false;
+	}
+}
+
+//-----------------------------
+void rankingDisplay::rankData::setScore()
+{
+	_scoreStr = ofToString(_score, 6, ' ') + fontMgr::GetInstance()->ws2s(L"¤À");
+	if (_score > 999)
+	{
+		_scoreStr.insert(3, ",");
+	}
+}
+
+//-----------------------------
+void rankingDisplay::rankData::updateAnim(float delta)
+{
+	if (_isWait)
+	{
+		return;
+	}
+	_animTextMove.update(delta);
+
+	if (_animTextMove.hasFinishedAnimating() && _animTextMove.getPercentDone() == 1.0)
+	{
+		_isWait = true;
+		_waitTime = cTextAnimWaitTime;
+	}
 }
 #pragma endregion
 
@@ -62,24 +167,36 @@ int rankingDisplay::rankData::getID()
 void rankingDisplay::setup(int serverId, string url)
 {
 	_serverID = serverId;
-	setupFont();
+	_newData.setFontType(eFontLarge);
+
+	fontMgr::GetInstance()->setup(cFontPath);
 	setupConnector(url);
 	setupRankNumber();
 	setupAnimate();
 	getRankingData();
 	_timer = cChangePageTime;
+
+	_newData.resetMove();
+
 }
 
 //-----------------------------
 void rankingDisplay::update(float delta)
 {
+	for (auto& iter : _totalRankingData)
+	{
+		iter.update(delta);
+	}
+	_newData.update(delta);
+
+
 	if (_needUpdate)
 	{
-		updateDisplay();
 		if (_canEnter)
 		{
 			sortRankData();
 		}
+		_newData.resetMove();
 		_needUpdate = false;
 	}
 
@@ -120,11 +237,11 @@ void rankingDisplay::drawNew()
 	ofPushStyle();
 	ofSetColor(255);
 	{
-		if (_newData._display.isAllocated())
+		if (_newData._id != -1)
 		{
 			ofVec2f drawPos = cRankNewDataPos;
 			drawNumber(_rankNo + 1, drawPos.x, drawPos.y);
-			_newData.draw(drawPos.x + (_numberWidth * 0.8f), drawPos.y);
+			_newData.draw(drawPos.x + (_numberWidth * 0.8f), drawPos.y, 255);
 		}
 	}
 	ofPopStyle();
@@ -158,9 +275,10 @@ void rankingDisplay::drawRanking()
 			}
 			float shiftX = cRankShiftXMax * (animVal - 1.0);
 
-			ofSetColor(255, 255 * animVal);
+			float alpha = 255 * animVal;
+			ofSetColor(255, alpha);
 			drawNumber(rankID + 1, drawPos.x + shiftX, drawPos.y);
-			_totalRankingData[rankID].draw(drawPos.x + (_numberWidth * 0.8f) + shiftX, drawPos.y);
+			_totalRankingData[rankID].draw(drawPos.x + (_numberWidth * 0.8f) + shiftX, drawPos.y, alpha);
 			drawPos.y += cRankYInterval;
 			rankID++;
 			counter++;
@@ -169,61 +287,6 @@ void rankingDisplay::drawRanking()
 		drawPos.y = cRankStartPosLeft.y;
 	}
 	ofPopStyle();
-}
-
-//-----------------------------
-void rankingDisplay::updateDisplay()
-{
-	ofFbo canvas;
-	canvas.allocate(cRankCanvasWidth, cRankCanvasHeight, GL_RGBA);
-	ofPixels pixel;
-	ofImage display;
-
-	for (auto& iter : _totalRankingData)
-	{
-
-		string score = ofToString(iter._score, 6, '0') + ws2s(L"¤À");
-		auto rectTeam = getTextRect(iter._teamName);
-		auto rectScore = getTextRect(score);
-
-		canvas.begin();
-		{	
-			ofClear(0, 0);
-			ofSetColor(cRankColor);
-				
-			drawText(iter._teamName, -rectTeam.x, (cRankCanvasHeight * 0.5) - (rectTeam.y * 0.5 ));
-			drawText(score, -rectScore.x + rectTeam.width * 1.1, (cRankCanvasHeight * 0.5) - (rectScore.y * 0.5));
-		}
-		canvas.end();
-
-		canvas.readToPixels(pixel);
-		iter._display.clear();
-		iter._display.setFromPixels(pixel);
-
-	}
-
-	//Update newData
-	if (_newData._id != -1)
-	{
-		_newData._display.clear();
-		string score = ofToString(_newData._score, 6, '0') + ws2s(L"¤À");
-		auto rectTeam = getTextRectL(_newData._teamName);
-		auto rectScore = getTextRectL(score);
-
-		canvas.begin();
-		{
-			ofClear(255);
-			ofSetColor(cRankColor);
-			drawTextL(_newData._teamName, -rectTeam.x, (cRankCanvasHeight * 0.5) - (rectScore.y * 0.5));
-			drawTextL(score, -rectScore.x + rectTeam.width * 1.1, (cRankCanvasHeight * 0.5) - (rectScore.y * 0.5));
-		}
-		canvas.end();
-
-		canvas.readToPixels(pixel);
-		display.setFromPixels(pixel);
-		_newData.setDisplay(display);
-	}
-	
 }
 
 //-----------------------------
@@ -326,6 +389,18 @@ void rankingDisplay::rankEnter()
 		delay += 0.2;
 	}
 	_eRankState = eEnter;
+
+	auto id = _rankingStartID;
+	for (int i = 0; i < cRankingEachPageNum; i++)
+	{
+		if (_rankingStartID + i >= _totalRankingData.size())
+		{
+			break;
+		}
+
+		_totalRankingData[_rankingStartID + i].resetMove();
+	}
+
 }
 
 //-----------------------------
@@ -337,47 +412,6 @@ void rankingDisplay::randExit()
 	}
 
 	_eRankState = eExit;
-}
-#pragma endregion
-
-#pragma region font
-//-----------------------------
-void rankingDisplay::setupFont()
-{
-	_font.setGlobalDpi(72);
-	_fontL.setGlobalDpi(72);
-	if (!_font.loadFont(cFontPath, cFontSize))
-	{
-		ofLog(OF_LOG_ERROR, "[rankingDisplay::setupFont]load font failed");
-	}
-
-
-	if (!_fontL.loadFont(cFontPath, cFontLSize))
-	{
-		ofLog(OF_LOG_ERROR, "[rankingDisplay::setupFont]load font failed");
-	}
-}
-
-//-----------------------------
-void rankingDisplay::drawText(string& text, int x, int y)
-{
-	_font.drawString(text, x, y);
-}
-//-----------------------------
-ofRectangle rankingDisplay::getTextRect(string & text)
-{
-	return _font.getStringBoundingBox(text, 0, 0);
-}
-
-//-----------------------------
-void rankingDisplay::drawTextL(string& text, int x, int y)
-{
-	_fontL.drawString(text, x, y);
-}
-//-----------------------------
-ofRectangle rankingDisplay::getTextRectL(string & text)
-{
-	return _fontL.getStringBoundingBox(text, 0, 0);
 }
 #pragma endregion
 
@@ -488,6 +522,7 @@ void rankingDisplay::handleRankingData(Json::Value & root)
 		if (sid == _serverID && _newData._id <= id)
 		{
 			_newData.setData(id, team, score);
+			
 		}
 
 		if (_teamSet.find(id) == _teamSet.end())

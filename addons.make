@@ -1,0 +1,4 @@
+ofxAnimatable
+ofxHttpUtils
+ofxTrueTypeFontUC
+ofxXmlSettings
